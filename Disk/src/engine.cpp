@@ -5,7 +5,11 @@
 
 bool GraphicEngine::Start(GLFWwindow*& window) {
     if (!glfwInit()) return false;
-    window = glfwCreateWindow(500, 720, "Effortless Disk Cleaner v1.0", NULL, NULL);
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+
+    window = glfwCreateWindow(1200, 800, "Effortless Disk Cleaner v2.0", NULL, NULL);
     if (!window) { glfwTerminate(); return false; }
 
     glfwMakeContextCurrent(window);
@@ -13,6 +17,9 @@ bool GraphicEngine::Start(GLFWwindow*& window) {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
