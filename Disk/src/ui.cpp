@@ -652,24 +652,24 @@ void DiskUI::RenderRam(float windowWidth, float windowHeight) {
         totalRAM = memStatus.ullTotalPhys / (1024 * 1024 * 1024);
         emptyRam = memStatus.ullAvailPhys / (1024 * 1024 * 1024);
         usagePercentage = memStatus.dwMemoryLoad;
-
-        /*
-        std::cout << "Available Memory: " << totalRAM << " GB" << std::endl;
-        std::cout << "Available Free RAM: " << emptyRam << " GB" << std::endl;
-        std::cout << "Memory Usage Percentage: %" << usagePercentage << std::endl;
-        */
     }
     else {
-        std::cout << "non ram info" << GetLastError() << std::endl;
+        std::cout << "non ram info " << GetLastError() << std::endl;
     }
 
     unsigned long long usedRam = totalRAM - emptyRam;
+
+    static float animatedUsage = 0.0f;
+    animatedUsage += (usagePercentage - animatedUsage) * 0.03f;
+
+    ImGui::BeginGroup();
 
     ImGui::SetWindowFontScale(1.5f);
     ImGui::TextColored(ImVec4(0.2f, 0.6f, 1.0f, 1.0f), "RAM INFORMATION");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::Separator();
     ImGui::Spacing();
+
     ImGui::SetWindowFontScale(1.2f);
     ImGui::Text("Total RAM: %llu GB", totalRAM);
     ImGui::Text("Used RAM: %llu GB", usedRam);
@@ -678,18 +678,51 @@ void DiskUI::RenderRam(float windowWidth, float windowHeight) {
     ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Memory Usage: %lu%%", usagePercentage);
     ImGui::SetWindowFontScale(1.0f);
 
+    ImGui::Spacing();
+    ImGui::Spacing();
+
+
     //Button
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 5));
     if (ImGui::Button("Clean Ram", ImVec2(150, 40))) {
         CleanSystemRam();
     }
-    ImGui::PopStyleVar();
 
-    //Info text
+    ImGui::PopStyleVar();
+    ImGui::EndGroup();
     ImGui::SameLine(0.0f, 50.0f);
-    ImGui::SetWindowFontScale(1.5f);
+    ImGui::BeginGroup();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 cursorP = ImGui::GetCursorScreenPos();
+
+    float tankWidth = 60.0f;
+    float tankHeight = 160.0f;
+    float fillHeight = tankHeight * (animatedUsage / 100.0f);
+    drawList->AddRectFilled(cursorP, ImVec2(cursorP.x + tankWidth, cursorP.y + tankHeight), IM_COL32(40, 40, 40, 255), 5.0f);
+    ImVec2 fillStart = ImVec2(cursorP.x, cursorP.y + tankHeight - fillHeight);
+    ImVec2 fillEnd = ImVec2(cursorP.x + tankWidth, cursorP.y + tankHeight);
+
+    ImU32 fluidColor = IM_COL32(30, 144, 255, 255);
+    if (animatedUsage > 85.0f) {
+        fluidColor = IM_COL32(220, 50, 50, 255);
+    }
+
+    drawList->AddRectFilled(fillStart, fillEnd, fluidColor, 5.0f);
+
+    drawList->AddRect(cursorP, ImVec2(cursorP.x + tankWidth, cursorP.y + tankHeight), IM_COL32(200, 200, 200, 255), 5.0f, 0, 2.0f);
+    ImGui::Dummy(ImVec2(tankWidth, tankHeight));
+
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 10.0f);
+    ImGui::Text("%.1f%%", animatedUsage);
+    ImGui::EndGroup();
+    ImGui::SameLine(0.0f, 50.0f);
+    ImGui::BeginGroup();
+    ImGui::SetWindowFontScale(1.4f);
     ImGui::TextColored(ImVec4(0.2f, 0.6f, 1.0f, 1.0f), "RAM Optimization and Its Effects");
     ImGui::SetWindowFontScale(1.0f);
+    ImGui::Spacing();
+
+    //Info text
     ImGui::TextWrapped(
         "RAM cleaning utilities use the Windows API (EmptyWorkingSet) to force background applications to surrender their memory, "
         "instantly shifting their idle data out of physical RAM and into the Pagefile (virtual memory on your SSD/HDD).\n\n"
@@ -698,6 +731,12 @@ void DiskUI::RenderRam(float windowWidth, float windowHeight) {
         "brief application freezes, and increased CPU usage when those background programs are refocused.\n\n"
         "Therefore, it is best used as a manual \"emergency button\" after closing heavy software, rather than an automated loop."
     );
-    ImGui::SetWindowFontScale(1.2f);
+
+    ImGui::SetWindowFontScale(1.3f);
+    ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "Fun Fact:");
+    ImGui::SetWindowFontScale(1.1f);
+    ImGui::TextWrapped("Windows already performs RAM cleanup; we just trigger it to do so");
     ImGui::SetWindowFontScale(1.0f);
+
+    ImGui::EndGroup();
 }
