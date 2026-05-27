@@ -22,7 +22,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
-add_executable(Disk 
+add_executable(Disk WIN32
     "Disk/src/main.cpp" 
     "Disk/src/engine.h" 
     "Disk/src/engine.cpp" 
@@ -30,7 +30,7 @@ add_executable(Disk
     "Disk/src/ui.cpp"
     "Disk/src/scanner.h"
     "Disk/src/scanner.cpp"
-)
+  )
 
 target_sources(Disk PRIVATE
     ${imgui_SOURCE_DIR}/imgui.cpp

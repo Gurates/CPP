@@ -12,11 +12,19 @@ struct DiskInfo {
     float usagePercent = 0.0f;
 };
 
+struct RamInfo {
+    float totalPhysical = 0.0f;
+    float usedPhysical = 0.0f;
+    float freePhysical = 0.0f;
+    float usagePercent = 0.0f;
+};
+
 enum class AppScreen {
     Overview,
     FileTree,
     LargeFiles,
     Junk,
+    Ram,
 };
 
 class DiskUI {
@@ -31,6 +39,7 @@ private:
     void RenderFileTree(float windowWidth, float windowHeight);
     void RenderLargeFiles(float windowWidth, float windowHeight);
     void RenderJunk(float windowWidth, float windowHeight);
+    void RenderRam(float windowWidth, float windowHeight);
 
     void              LayoutTreemap(FolderNode* node, float x, float y, float w, float h);
     void              DrawTreemap(const FolderNode* node, float mouseX, float mouseY);
@@ -38,6 +47,7 @@ private:
 
     DiskScanner scanner;
     DiskInfo    diskInfo;
+    RamInfo     ramInfo;
     AppScreen   currentScreen = AppScreen::Overview;
 
     std::chrono::steady_clock::time_point lastDiskRefresh;

@@ -54,16 +54,13 @@ void DiskScanner::StartFullScan(const std::string& rootPath) {
 void DiskScanner::ScanWorker(std::string rootPath) {
     auto options = fs::directory_options::skip_permission_denied;
 
-    // Build root node
     auto root = std::make_shared<FolderNode>();
     root->name = rootPath;
     root->fullPath = rootPath;
 
-    // Track folder nodes: path -> node
     std::map<std::string, std::shared_ptr<FolderNode>> folderMap;
     folderMap[rootPath] = root;
 
-    // Thread-local results — collected without locking, written at the end
     std::map<FileCategory, CategoryStats> localResults = results;
     std::vector<LargeFile>               localLargeFiles;
 
@@ -71,14 +68,12 @@ void DiskScanner::ScanWorker(std::string rootPath) {
         for (const auto& entry : fs::recursive_directory_iterator(rootPath, options)) {
             if (shouldStop) break;
 
-            // Update scan path thread-safely every 100 files
             if (totalFilesScanned % 100 == 0) {
                 std::lock_guard<std::mutex> lock(pathMutex);
                 currentScanPath = entry.path().string();
             }
 
             if (fs::is_directory(entry.status())) {
-                // Create folder node
                 std::string dirPath = entry.path().string();
                 if (folderMap.find(dirPath) == folderMap.end()) {
                     auto node = std::make_shared<FolderNode>();
@@ -110,7 +105,6 @@ void DiskScanner::ScanWorker(std::string rootPath) {
             localResults[cat].fileCount += 1;
             totalFilesScanned++;
 
-            // Propagate file size up the ancestor chain
             std::string dirPath = entry.path().parent_path().string();
             auto folderIt = folderMap.find(dirPath);
             while (folderIt != folderMap.end()) {
@@ -125,20 +119,17 @@ void DiskScanner::ScanWorker(std::string rootPath) {
                 }
             }
 
-            // Track large files (50 MB+)
             if (fileSize > 50ULL * 1024 * 1024)
                 localLargeFiles.push_back({ entry.path().string(), fileSize, cat });
         }
     }
     catch (...) {}
 
-    // Sort large files by size descending
     std::sort(localLargeFiles.begin(), localLargeFiles.end(),
         [](const LargeFile& a, const LargeFile& b) { return a.size > b.size; });
     if (localLargeFiles.size() > 100)
         localLargeFiles.resize(100);
 
-    // Write results under lock
     {
         std::lock_guard<std::mutex> lock(resultsMutex);
         results = localResults;

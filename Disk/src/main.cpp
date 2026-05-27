@@ -1,10 +1,11 @@
+#include <windows.h> 
 #include <GLFW/glfw3.h>
 #include "engine.h"
 #include "ui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-int main() {
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     GLFWwindow* window = nullptr;
     if (!GraphicEngine::Start(window)) return -1;
 

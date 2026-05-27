@@ -4,10 +4,14 @@
 #include <algorithm>
 #include <cstring>
 #include <windows.h>
+#include <iostream>
+#include <string>
+#include <psapi.h>
+
+#pragma comment(lib, "psapi.lib")
 
 namespace fs = std::filesystem;
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 static std::string FormatSize(uintmax_t bytes) {
     char buf[64];
@@ -32,13 +36,11 @@ static ImVec4 CategoryColor(FileCategory cat) {
     }
 }
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
 
 DiskUI::DiskUI() {
     lastDiskRefresh = std::chrono::steady_clock::now() - std::chrono::seconds(10);
 }
 
-// ─── Disk info (cached, refreshes every 2 s) ─────────────────────────────────
 
 void DiskUI::RefreshDiskInfo(const std::string& drivePath) {
     auto now = std::chrono::steady_clock::now();
@@ -59,7 +61,6 @@ void DiskUI::RefreshDiskInfo(const std::string& drivePath) {
     catch (...) {}
 }
 
-// ─── Main render ─────────────────────────────────────────────────────────────
 
 void DiskUI::Render(GLFWwindow* window) {
     RefreshDiskInfo("C:\\");
@@ -87,16 +88,16 @@ void DiskUI::Render(GLFWwindow* window) {
     case AppScreen::FileTree:   RenderFileTree(fw, contentH);   break;
     case AppScreen::LargeFiles: RenderLargeFiles(fw, contentH); break;
     case AppScreen::Junk:       RenderJunk(fw, contentH);       break;
+    case AppScreen::Ram:RenderRam(fw, contentH); break;
     }
 
     ImGui::End();
 }
 
-// ─── Top navigation bar ──────────────────────────────────────────────────────
 
 void DiskUI::RenderTopBar(float windowWidth) {
     ImGui::SetCursorPos(ImVec2(12.0f, 14.0f));
-    ImGui::Text("Effortless Disk Cleaner");
+    ImGui::Text("Disk Cleaner");
 
     ImGui::SameLine(windowWidth / 2.0f - 200.0f);
 
@@ -106,26 +107,24 @@ void DiskUI::RenderTopBar(float windowWidth) {
         { "Folders",    AppScreen::FileTree   },
         { "Large Files",AppScreen::LargeFiles },
         { "Cleanup",    AppScreen::Junk       },
+        { "Ram",    AppScreen::Ram       },
     };
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         bool active = (currentScreen == items[i].screen);
         if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.55f, 0.95f, 1.0f));
         if (ImGui::Button(items[i].label, ImVec2(100, 28)))
             currentScreen = items[i].screen;
         if (active) ImGui::PopStyleColor();
-        if (i < 3) ImGui::SameLine(0, 6);
+        if (i < 4) ImGui::SameLine(0, 6);
     }
 
     ImGui::Separator();
 }
 
-// ─── Overview screen ─────────────────────────────────────────────────────────
-
 void DiskUI::RenderOverview(float windowWidth, float windowHeight) {
     float leftW = windowWidth * 0.38f;
     float rightW = windowWidth - leftW - 16.0f;
 
-    // Left panel: disk summary + scan controls
     ImGui::BeginChild("##left", ImVec2(leftW, windowHeight - 8), true);
 
     ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "STORAGE STATUS");
@@ -198,7 +197,6 @@ void DiskUI::RenderOverview(float windowWidth, float windowHeight) {
 
     ImGui::EndChild();
 
-    // Right panel: treemap
     ImGui::SameLine(0, 8);
     ImGui::BeginChild("##right", ImVec2(rightW, windowHeight - 8), true);
 
@@ -233,7 +231,6 @@ void DiskUI::RenderOverview(float windowWidth, float windowHeight) {
     ImGui::EndChild();
 }
 
-// ─── Treemap layout & drawing ────────────────────────────────────────────────
 
 void DiskUI::LayoutTreemap(FolderNode* node, float x, float y, float w, float h) {
     if (!node || node->children.empty() || node->totalSize == 0) return;
@@ -330,7 +327,6 @@ const FolderNode* DiskUI::FindHoveredNode(const FolderNode* node, float mx, floa
     return nullptr;
 }
 
-// ─── Folder explorer screen ──────────────────────────────────────────────────
 
 static void RenderFolderTreeNode(FolderNode* node, FolderNode*& selected) {
     if (!node) return;
@@ -433,7 +429,6 @@ void DiskUI::RenderFileTree(float windowWidth, float windowHeight) {
     ImGui::EndChild();
 }
 
-// ─── Large files screen ──────────────────────────────────────────────────────
 
 void DiskUI::RenderLargeFiles(float windowWidth, float windowHeight) {
     const std::vector<LargeFile>& largeFiles = scanner.GetLargeFiles();
@@ -499,7 +494,6 @@ void DiskUI::RenderLargeFiles(float windowWidth, float windowHeight) {
     ImGui::EndChild();
 }
 
-// ─── Junk cleaner screen ─────────────────────────────────────────────────────
 
 void DiskUI::RenderJunk(float windowWidth, float windowHeight) {
     struct JunkLocation {
@@ -510,8 +504,8 @@ void DiskUI::RenderJunk(float windowWidth, float windowHeight) {
     };
 
     static std::vector<JunkLocation> locs;
-    static std::vector<int>          sel;       // int instead of bool — avoids vector<bool> proxy issues
-    static bool                      sizesReady = false;
+    static std::vector<int> sel;
+    static bool sizesReady = false;
 
     if (locs.empty()) {
         const char* windir = getenv("WINDIR");
@@ -621,4 +615,89 @@ void DiskUI::RenderJunk(float windowWidth, float windowHeight) {
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
+}
+
+
+void CleanSystemRam() {
+    DWORD aProcesses[1024], cbNeeded, cProcesses;
+
+    if (!EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded)) {
+        return;
+    }
+
+    cProcesses = cbNeeded / sizeof(DWORD);
+
+    for (unsigned int i = 0; i < cProcesses; i++) {
+        if (aProcesses[i] != 0) {
+            HANDLE hProcess = OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION, FALSE, aProcesses[i]);
+            if (hProcess != NULL) {
+                EmptyWorkingSet(hProcess);
+                CloseHandle(hProcess);
+            }
+        }
+    }
+}
+
+
+void DiskUI::RenderRam(float windowWidth, float windowHeight) {
+
+    MEMORYSTATUSEX memStatus;
+    memStatus.dwLength = sizeof(memStatus);
+
+    unsigned long long totalRAM = 0;
+    unsigned long long emptyRam = 0;
+    DWORD usagePercentage = 0;
+
+    if (GlobalMemoryStatusEx(&memStatus)) {
+        totalRAM = memStatus.ullTotalPhys / (1024 * 1024 * 1024);
+        emptyRam = memStatus.ullAvailPhys / (1024 * 1024 * 1024);
+        usagePercentage = memStatus.dwMemoryLoad;
+
+        /*
+        std::cout << "Available Memory: " << totalRAM << " GB" << std::endl;
+        std::cout << "Available Free RAM: " << emptyRam << " GB" << std::endl;
+        std::cout << "Memory Usage Percentage: %" << usagePercentage << std::endl;
+        */
+    }
+    else {
+        std::cout << "non ram info" << GetLastError() << std::endl;
+    }
+
+    unsigned long long usedRam = totalRAM - emptyRam;
+
+    ImGui::SetWindowFontScale(1.5f);
+    ImGui::TextColored(ImVec4(0.2f, 0.6f, 1.0f, 1.0f), "RAM INFORMATION");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::SetWindowFontScale(1.2f);
+    ImGui::Text("Total RAM: %llu GB", totalRAM);
+    ImGui::Text("Used RAM: %llu GB", usedRam);
+    ImGui::Text("Free RAM: %llu GB", emptyRam);
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Memory Usage: %lu%%", usagePercentage);
+    ImGui::SetWindowFontScale(1.0f);
+
+    //Button
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 5));
+    if (ImGui::Button("Clean Ram", ImVec2(150, 40))) {
+        CleanSystemRam();
+    }
+    ImGui::PopStyleVar();
+
+    //Info text
+    ImGui::SameLine(0.0f, 50.0f);
+    ImGui::SetWindowFontScale(1.5f);
+    ImGui::TextColored(ImVec4(0.2f, 0.6f, 1.0f, 1.0f), "RAM Optimization and Its Effects");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::TextWrapped(
+        "RAM cleaning utilities use the Windows API (EmptyWorkingSet) to force background applications to surrender their memory, "
+        "instantly shifting their idle data out of physical RAM and into the Pagefile (virtual memory on your SSD/HDD).\n\n"
+        "While this process causes absolutely no physical or hardware damage to your computer components, it can introduce temporary "
+        "system performance drawbacks. Forcing data to move from ultra-fast RAM to a much slower storage drive can cause micro-stutters, "
+        "brief application freezes, and increased CPU usage when those background programs are refocused.\n\n"
+        "Therefore, it is best used as a manual \"emergency button\" after closing heavy software, rather than an automated loop."
+    );
+    ImGui::SetWindowFontScale(1.2f);
+    ImGui::SetWindowFontScale(1.0f);
 }
