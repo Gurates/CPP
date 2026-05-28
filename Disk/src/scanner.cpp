@@ -33,6 +33,7 @@ void DiskScanner::Reset() {
     largeFiles.clear();
     rootNode.reset();
     totalFilesScanned = 0;
+    currentScannedSize = 0;
     progress = 0.0f;
     {
         std::lock_guard<std::mutex> lock(pathMutex);
@@ -97,6 +98,8 @@ void DiskScanner::ScanWorker(std::string rootPath) {
             try { fileSize = fs::file_size(entry.path()); }
             catch (...) { continue; }
 
+            currentScannedSize += fileSize;
+
             std::string ext = entry.path().extension().string();
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
@@ -110,6 +113,8 @@ void DiskScanner::ScanWorker(std::string rootPath) {
             while (folderIt != folderMap.end()) {
                 folderIt->second->totalSize += fileSize;
                 folderIt->second->fileCount++;
+                folderIt->second->categorySizes[static_cast<int>(cat)] += fileSize;
+
                 if (folderIt->second->parent) {
                     dirPath = folderIt->second->parent->fullPath;
                     folderIt = folderMap.find(dirPath);
@@ -145,7 +150,6 @@ void DiskScanner::ScanWorker(std::string rootPath) {
     progress = 1.0f;
     isScanning = false;
 }
-
 FileCategory DiskScanner::CategorizeFile(const std::string& extension) {
     if (extension == ".exe" || extension == ".dll" || extension == ".msi" ||
         extension == ".sys" || extension == ".com" || extension == ".bat")

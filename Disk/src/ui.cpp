@@ -150,7 +150,17 @@ void DiskUI::RenderOverview(float windowWidth, float windowHeight) {
         if (path.size() > 45) path = "..." + path.substr(path.size() - 42);
         ImGui::TextWrapped("%s", path.c_str());
         ImGui::Text("Scanned: %zu files", scanner.GetTotalFilesScanned());
-        ImGui::ProgressBar(-1.0f * (float)ImGui::GetTime(), ImVec2(-1, 12), "");
+        float scannedGB = (float)(scanner.GetTotalSizeScanned()) / (1024.0f * 1024.0f * 1024.0f);
+        float progressRatio = 0.0f;
+        if (diskInfo.usedDisk > 0.0f) {
+            progressRatio = scannedGB / diskInfo.usedDisk;
+            if (progressRatio > 1.0f) progressRatio = 1.0f;
+        }
+
+        char progBuf[32];
+        snprintf(progBuf, sizeof(progBuf), "%.1f%%", progressRatio * 100.0f);
+        ImGui::ProgressBar(progressRatio, ImVec2(-1, 12), progBuf);
+
         if (ImGui::Button("Stop", ImVec2(-1, 28)))
             scanner.StopScan();
     }
@@ -213,13 +223,16 @@ void DiskUI::RenderOverview(float windowWidth, float windowHeight) {
 
         ImVec2 mouse = ImGui::GetMousePos();
         DrawTreemap(root.get(), mouse.x, mouse.y);
-
         const FolderNode* hovered = FindHoveredNode(root.get(), mouse.x, mouse.y);
         if (hovered) {
             ImGui::SetTooltip("%s\n%s (%zu files)",
                 hovered->name.c_str(),
                 FormatSize(hovered->totalSize).c_str(),
                 hovered->fileCount);
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                std::wstring wpath(hovered->fullPath.begin(), hovered->fullPath.end());
+                ShellExecuteW(nullptr, L"explore", wpath.c_str(), nullptr, nullptr, SW_SHOWDEFAULT);
+            }
         }
         ImGui::Dummy(ImVec2(mapW, mapH));
     }
@@ -274,19 +287,36 @@ void DiskUI::DrawTreemap(const FolderNode* node, float mouseX, float mouseY) {
 
     for (size_t i = 0; i < node->children.size(); i++) {
         const FolderNode* child = node->children[i].get();
+        if (!child) continue;
         if (child->treemapW < 2 || child->treemapH < 2) continue;
 
         bool hovered = (mouseX >= child->treemapX &&
             mouseX <= child->treemapX + child->treemapW &&
             mouseY >= child->treemapY &&
             mouseY <= child->treemapY + child->treemapH);
+        FileCategory dominantCat = FileCategory::Other;
+        uintmax_t maxCatSize = 0;
+        for (int c = 0; c < 5; ++c) {
+            if (child->categorySizes[c] > maxCatSize) {
+                maxCatSize = child->categorySizes[c];
+                dominantCat = static_cast<FileCategory>(c);
+            }
+        }
+        ImVec4 catColor = CategoryColor(dominantCat);
+        int r = (int)(catColor.x * 255.0f);
+        int g = (int)(catColor.y * 255.0f);
+        int b = (int)(catColor.z * 255.0f);
 
-        float t = (float)((double)child->totalSize / 1e10);
-        if (t > 1.0f) t = 1.0f;
-
-        ImU32 fill = hovered
-            ? IM_COL32(120, 160, 255, 200)
-            : IM_COL32((int)(40 + t * 60), (int)(60 + t * 80), (int)(120 + t * 60), 180);
+        ImU32 fill;
+        if (hovered) {
+            r = (int)(r * 1.3f); if (r > 255) r = 255;
+            g = (int)(g * 1.3f); if (g > 255) g = 255;
+            b = (int)(b * 1.3f); if (b > 255) b = 255;
+            fill = IM_COL32(r, g, b, 220);
+        }
+        else {
+            fill = IM_COL32(r, g, b, 180);
+        }
 
         dl->AddRectFilled(
             ImVec2(child->treemapX, child->treemapY),

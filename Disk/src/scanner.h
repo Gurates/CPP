@@ -28,9 +28,9 @@ struct FolderNode {
     std::string fullPath;
     uintmax_t   totalSize = 0;
     size_t      fileCount = 0;
+    uintmax_t   categorySizes[5] = { 0 };
     std::vector<std::shared_ptr<FolderNode>> children;
     FolderNode* parent = nullptr;
-
     float treemapX = 0, treemapY = 0, treemapW = 0, treemapH = 0;
 };
 
@@ -45,6 +45,7 @@ public:
     DiskScanner();
     ~DiskScanner();
 
+    uintmax_t GetTotalSizeScanned() const { return currentScannedSize.load(); }
     void StartFullScan(const std::string& rootPath);
     void StopScan();
     void Reset();
@@ -66,6 +67,11 @@ public:
 private:
     void         ScanWorker(std::string rootPath);
     FileCategory CategorizeFile(const std::string& extension);
+    std::atomic<bool>      isScanning;
+    std::atomic<bool>      shouldStop;
+    std::atomic<float>     progress;
+    std::atomic<size_t>    totalFilesScanned;
+    std::atomic<uintmax_t> currentScannedSize{ 0 };
 
     std::map<FileCategory, CategoryStats> results;
     std::vector<LargeFile>               largeFiles;
@@ -73,11 +79,6 @@ private:
 
     mutable std::mutex pathMutex;
     mutable std::mutex resultsMutex;
-
-    std::atomic<bool>   isScanning;
-    std::atomic<bool>   shouldStop;
-    std::atomic<float>  progress;
-    std::atomic<size_t> totalFilesScanned;
 
     std::string currentScanPath;
     std::thread scanThread;
